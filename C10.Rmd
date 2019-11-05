@@ -1,0 +1,170 @@
+---
+title: "N-gram Model"
+author: "Srotaswati Panda"
+date: "13/10/2019"
+output:
+  html_document:
+    toc: yes
+    toc_float:
+      smooth_scroll: no
+---
+
+## Summary
+
+The goal here is to build a simple model for the relationship between words. This is the first step in building a predictive text mining application. The goal for this prediction model is to minimize both the size and runtime of the model in order to provide a reasonable experience to the user.
+
+Tasks to accomplish:  
+1. Exploratory analysis - distribution of words and relationship between words  
+2. Frequencies of words and word pairs with figures and tables
+
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE)
+library(data.table)
+library(ggplot2)
+```
+
+## Getting the data
+The first step is to create a master source of the data from the link and store it in a separate folder.
+```{r getdata, cache=TRUE}
+if(!file.exists("./data"))
+    dir.create("data")
+if(!file.exists("./data/swiftkey.zip")){
+    fileurl<-"https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip"
+    download.file(fileurl,destfile = "./data/swiftkey.zip")
+}
+blogs_file<-"./data/final/en_US/en_US.blogs.txt"
+news_file<-"./data/final/en_US/en_US.news.txt"
+twitter_file<-"./data/final/en_US/en_US.twitter.txt"
+if(!file.exists(blogs_file)&!file.exists(news_file)&!file.exists(twitter_file))
+    unzip("./data/swiftkey.zip",exdir="./data")
+ 
+blogs<-readLines(blogs_file,skipNul = TRUE)
+news<-readLines(news_file,skipNul = TRUE)
+twitter<-readLines(twitter_file,skipNul = TRUE)
+textsource<-c(blogs,news,twitter)
+```
+
+## Exploratory Analysis
+Next we make a summary statistics of the data sets for the number of sentences and determine the frequency of different words. 
+```{r summary, cache=TRUE}
+#Week 1 quiz
+#format(object.size(blogs),units = "MB")
+#length(twitter)
+#max(nchar(blogs))
+#sum(grepl(" +love +",twitter))/sum(grepl(" +hate +",twitter))
+#twitter[which(grepl(" +[Bb]iostats +",twitter)==TRUE)]
+#sum(grepl("A computer once beat me at chess, but it was no match for me at kickboxing",twitter))
+
+data.frame("File"=c("Blogs","News","Twitter"),"Size"=sapply(list(blogs,news,twitter), function(x){format(object.size(x),"MB")}),"Total characters"=sapply(list(blogs,news,twitter), function(x){sum(nchar(x))}),"Max characters"=sapply(list(blogs,news,twitter), function(x){max(unlist(lapply(x, function(y){nchar(y)})))}))
+
+textdt<-data.table(textsource)
+sentencelist<-unlist(strsplit(textdt$textsource,"(?<!\\w\\.\\w.)(?<![A-Z][a-z]\\.)(?<=\\.|\\?)\\s", perl=TRUE))
+```
+There are `r format(length(sentencelist),big.mark=",",scientific=FALSE)` sentences. The size of actual textsource is `r format(object.size(textsource),units="GB")`.
+
+## Pre-processing for model
+As the data is huge, only part of the data would be sampled. Next, the data is coverted into a list of words and cleaned of any numeric entities, punctuation marks, empty spaces, non-English characters. 
+```{r makewords, cache=TRUE}
+set.seed(1223)
+sample_size<-0.1
+lines<-sort(sample(1:length(textsource),round(length(textsource)*sample_size),replace=FALSE))
+sampled<-textsource[lines]
+sampled_dt<-data.table(sampled)
+
+rm(blogs)
+rm(twitter)
+rm(news)
+rm(sentencelist)
+rm(textsource)
+
+wordlist<-unlist(strsplit(tolower(sampled_dt$sampled)," "))
+gc(verbose = getOption("verbose"), reset = FALSE, full = TRUE)
+
+wordlist<-gsub("^[12]{1}[0-9]{3}$","YYYY",wordlist)
+wordlist<-gsub("^\\d+(,\\d*)*\\.*\\d*$","numeric",wordlist)
+wordlist<-gsub("[[:punct:]]","",wordlist)
+wordlist<-gsub("[^\x01-\x7F]+","",wordlist)
+wordlist<-wordlist[!(wordlist=="")]
+```
+
+Next, we create a ready-table of unique words and assign a numerical code for each word by its frequency in the word list. The word and its corresponding code can be readily referenced by user-defined functions. 
+
+The wordscodes dictionary contains the actual word and its code sorted by frequency while the codes dictionary contains the words in the original order referenced by its code. The latter dictionary would be used to construct the multiple ngrams.
+```{r coding_words, cache=TRUE}
+wordfreq<-data.table(word=wordlist)
+wordfreq[,freq:=.N,by=word]
+
+rm(wordlist)
+rm(sampled)
+
+wordscodes = unique(copy(wordfreq))
+setkey(wordscodes,freq)
+wordscodes[,code:= nrow(wordscodes):1]
+setkey(wordscodes,word)
+
+wordtocode<-function(w){
+    wlist<-list(w)
+    wordscodes[wlist]$code
+}
+codetoword<-function(c){
+    temp<-setkey(wordscodes,code)
+    clist<-list(c)
+    wordscodes[clist]$word
+}
+
+codes<-copy(wordfreq)
+codes[,codex:=wordtocode(word)]
+setnames(codes, old="codex", new="code")
+setcolorder(codes, neworder = c("code","freq"))
+```
+
+## N-gram models
+
+```{r requirefunc}
+rotatenum<-function(x){(1:x%%x)+1}
+rotatevec<-function(v){v[rotatenum(length(v))]}
+```
+### Unigrams
+```{r unigram, cache=TRUE}
+unigrams<-unique(copy(codes))
+setkey(unigrams,code)
+unigrams[,code:=NULL]
+ggplot(data=unigrams[1:40,],aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="identity")+labs(x="Unigram",y="Frequency")+theme(axis.text.x = element_text(angle=90))
+```
+
+### Bigrams
+```{r bigram, cache=TRUE}
+bigrams <- data.table(w1 = codes$word, c1 = codes$code, c2 = rotatevec(codes$code))
+bigrams<-bigrams[,w2:=codetoword(c2)]
+bigrams[,freq:=.N,by=.(c1,c2)]
+bigrams<-bigrams[,word:=paste(w1,w2," ")]
+ggplot(data=bigrams[1:40,],aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="identity")+labs(x="Bigram",y="Frequency")+theme(axis.text.x = element_text(angle=90))
+```
+
+### Trigrams
+```{r trigram, cache=TRUE}
+trigrams <- data.table(w1 = codes$word, c1 = codes$code, c2 = rotatevec(codes$code),c3 = rotatevec(rotatevec(codes$code)))
+trigrams<-trigrams[,w2:=codetoword(c2)]
+trigrams<-trigrams[,w3:=codetoword(c3)]
+trigrams[,freq:=.N,by=.(c1,c2,c3)]
+trigrams<-trigrams[,word:=paste(w1,w2,w3," ")]
+ggplot(data=trigrams[1:40,],aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="identity")+labs(x="Trigram",y="Frequency")+theme(axis.text.x = element_text(angle=90))
+```
+
+### Quadgrams
+```{r quadgram, cache=TRUE}
+quadgrams <- data.table(w1 = codes$word, c1 = codes$code, c2 = rotatevec(codes$code),c3 = rotatevec(rotatevec(codes$code)),c4 = rotatevec(rotatevec(rotatevec(codes$code))))
+quadgrams<-quadgrams[,w2:=codetoword(c2)]
+quadgrams<-quadgrams[,w3:=codetoword(c3)]
+quadgrams<-quadgrams[,w4:=codetoword(c4)]
+quadgrams[,freq:=.N,by=.(c1,c2,c3,c4)]
+quadgrams<-quadgrams[,word:=paste(w1,w2,w3,w4," ")]
+ggplot(data=quadgrams[1:40,],aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="identity")+labs(x="Quadgram",y="Frequency")+theme(axis.text.x = element_text(angle=90))
+```
+
+
+## Summary and Futher Work
+Working with the complete source takes a lot of time and hence only 10% of the data was sampled here. Some workarounds was using cached chunks and removing large files after use which freed internal memory. If sampling size and ngram length was higher, there were errors with knitting the file as the matrix sizes increased non-linearly. A possible solution would be to work with the tm(text mining) library and RWeka libraries to avoid creating huge vectors. Smaller data reduces the frequencies of higher ngrams. Here, the most abundant quadgrams had only four instances in the entire sampled source.  
+
+The code could be further refined to make generalized functions to find ngrams. While creating the app, and given a string of words by the user, the idea would be look at strings of three or four words for the most likely word to follow. A further improvement would be to investigate if any phrases with emojis, interjections and other unusual strings occur, especially in the twitter source. A concern would be running the Shiny App in optimal time.
