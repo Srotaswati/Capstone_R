@@ -44,6 +44,7 @@ news<-readLines(news_file,skipNul = TRUE)
 twitter<-readLines(twitter_file,skipNul = TRUE)
 textsource<-c(blogs,news,twitter)
 ```
+There was an ‘incomplete final line’ error for the 'en_US.news.txt' file. This causes the file to prematurely stop loading and less than 20 MB of the file was read. This was fixed by going to the lines (determined by the tail function) where there were utf-8 characters and manually deleting them. This was done four times. Another solution might be to use the readr::read_lines() instead.
 
 ## Exploratory Analysis
 Next we make a summary statistics of the data sets for the number of sentences and determine the frequency of different words. 
@@ -56,7 +57,7 @@ Next we make a summary statistics of the data sets for the number of sentences a
 #twitter[which(grepl(" +[Bb]iostats +",twitter)==TRUE)]
 #sum(grepl("A computer once beat me at chess, but it was no match for me at kickboxing",twitter))
 
-data.frame("File"=c("Blogs","News","Twitter"),"Size"=sapply(list(blogs,news,twitter), function(x){format(object.size(x),"MB")}),"Total characters"=sapply(list(blogs,news,twitter), function(x){sum(nchar(x))}),"Max characters"=sapply(list(blogs,news,twitter), function(x){max(unlist(lapply(x, function(y){nchar(y)})))}))
+data.frame("File"=c("Blogs","News","Twitter"),"Size"=sapply(list(blogs,news,twitter), function(x){format(object.size(x),"MB")}),"Total characters"=sapply(list(blogs,news,twitter), function(x){sum(nchar(x))}),"Max characters"=sapply(list(blogs,news,twitter), function(x){max(unlist(lapply(x, function(y){nchar(y)})))}),"Total entries"=sapply(list(blogs,news,twitter), function(x){length(x)}))
 
 textdt<-data.table(textsource)
 sentencelist<-unlist(strsplit(textdt$textsource,"(?<!\\w\\.\\w.)(?<![A-Z][a-z]\\.)(?<=\\.|\\?)\\s", perl=TRUE))
@@ -67,7 +68,7 @@ There are `r format(length(sentencelist),big.mark=",",scientific=FALSE)` sentenc
 As the data is huge, only part of the data would be sampled. Next, the data is coverted into a list of words and cleaned of any numeric entities, punctuation marks, empty spaces, non-English characters. 
 ```{r makewords, cache=TRUE}
 set.seed(1223)
-sample_size<-0.5
+sample_size<-0.05
 lines<-sort(sample(1:length(textsource),round(length(textsource)*sample_size),replace=FALSE))
 sampled<-textsource[lines]
 sampled_dt<-data.table(sampled)
@@ -121,10 +122,12 @@ setcolorder(codes, neworder = c("code","freq"))
 
 ## N-gram models
 
+The following functions are used to get compute the next element in the data table and rotate. Multiple n-grams can be obtained by nesting the functions.
 ```{r requirefunc}
 rotatenum<-function(x){(1:x%%x)+1}
 rotatevec<-function(v){v[rotatenum(length(v))]}
 ```
+
 ### Unigrams
 ```{r unigram, cache=TRUE}
 unigrams<-unique(copy(codes))
@@ -136,35 +139,48 @@ ggplot(data=unigrams[1:40,],aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="id
 ### Bigrams
 ```{r bigram, cache=TRUE}
 bigrams <- data.table(w1 = codes$word, c1 = codes$code, c2 = rotatevec(codes$code))
-bigrams<-bigrams[,w2:=codetoword(c2)]
 bigrams[,freq:=.N,by=.(c1,c2)]
-bigrams<-bigrams[,word:=paste(w1,w2," ")]
-ggplot(data=bigrams[1:40,],aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="identity")+labs(x="Bigram",y="Frequency")+theme(axis.text.x = element_text(angle=90))
+bigrams<-bigrams[,word:=paste(w1,codetoword(c2)," ")]
+plotdata<-unique(bigrams[,c("word","freq")],by="word")
+setkey(plotdata,freq)
+ggplot(data=tail(plotdata,40),aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="identity")+labs(x="Bigram",y="Frequency")+theme(axis.text.x = element_text(angle=90))
 ```
 
 ### Trigrams
 ```{r trigram, cache=TRUE}
 trigrams <- data.table(w1 = codes$word, c1 = codes$code, c2 = rotatevec(codes$code),c3 = rotatevec(rotatevec(codes$code)))
-trigrams<-trigrams[,w2:=codetoword(c2)]
-trigrams<-trigrams[,w3:=codetoword(c3)]
 trigrams[,freq:=.N,by=.(c1,c2,c3)]
-trigrams<-trigrams[,word:=paste(w1,w2,w3," ")]
-ggplot(data=trigrams[1:40,],aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="identity")+labs(x="Trigram",y="Frequency")+theme(axis.text.x = element_text(angle=90))
+trigrams<-trigrams[,word:=paste(w1,codetoword(c2),codetoword(c3)," ")]
+plotdata<-unique(trigrams[,c("word","freq")],by="word")
+setkey(plotdata,freq)
+ggplot(data=tail(plotdata,40),aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="identity")+labs(x="Trigram",y="Frequency")+theme(axis.text.x = element_text(angle=90))
 ```
 
 ### Quadgrams
 ```{r quadgram, cache=TRUE}
 quadgrams <- data.table(w1 = codes$word, c1 = codes$code, c2 = rotatevec(codes$code),c3 = rotatevec(rotatevec(codes$code)),c4 = rotatevec(rotatevec(rotatevec(codes$code))))
-quadgrams<-quadgrams[,w2:=codetoword(c2)]
-quadgrams<-quadgrams[,w3:=codetoword(c3)]
-quadgrams<-quadgrams[,w4:=codetoword(c4)]
 quadgrams[,freq:=.N,by=.(c1,c2,c3,c4)]
-quadgrams<-quadgrams[,word:=paste(w1,w2,w3,w4," ")]
-ggplot(data=quadgrams[1:40,],aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="identity")+labs(x="Quadgram",y="Frequency")+theme(axis.text.x = element_text(angle=90))
+quadgrams<-quadgrams[,word:=paste(w1,codetoword(c2),codetoword(c3),codetoword(c4)," ")]
+plotdata<-unique(quadgrams[,c("word","freq")],by="word")
+setkey(plotdata,freq)
+ggplot(data=tail(plotdata,40),aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="identity")+labs(x="Quadgram",y="Frequency")+theme(axis.text.x = element_text(angle=90))
 ```
 
+### Pentagrams
+```{r pentagram, cache=TRUE}
+pentagrams <- data.table(w1 = codes$word, c1 = codes$code, c2 = rotatevec(codes$code),c3 = rotatevec(rotatevec(codes$code)),c4 = rotatevec(rotatevec(rotatevec(codes$code))),c5 = rotatevec(rotatevec(rotatevec(rotatevec(codes$code)))))
+pentagrams[,freq:=.N,by=.(c1,c2,c3,c4,c5)]
+pentagrams<-pentagrams[,word:=paste(w1,codetoword(c2),codetoword(c3),codetoword(c4),codetoword(c5)," ")]
+plotdata<-unique(pentagrams[,c("word","freq")],by="word")
+setkey(plotdata,freq)
+ggplot(data=tail(plotdata,40),aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="identity")+labs(x="Pentagram",y="Frequency")+theme(axis.text.x = element_text(angle=90))
+
+rm(plotdata)
+```
 
 ## Summary and Futher Work
-Working with the complete source takes a lot of time and hence only 10% of the data was sampled here. Some workarounds was using cached chunks and removing large files after use which freed internal memory. If sampling size and ngram length was higher, there were errors with knitting the file as the matrix sizes increased non-linearly. A possible solution would be to work with the tm(text mining) library and RWeka libraries to avoid creating huge vectors. Smaller data reduces the frequencies of higher ngrams. Here, the most abundant quadgrams had only four instances in the entire sampled source.  
+Working with the complete source takes a lot of time and hence only 5% of the data was sampled here. Some workarounds was using cached chunks and removing large files after use which freed internal memory. If sampling size and ngram length was higher, there were errors with knitting the file as the matrix sizes increased non-linearly. This was partly solved by running the individual code chunks through the console first. 
+
+Another possible method to create the ngrams would be to work with the tm(text mining) library and RWeka libraries to avoid creating huge vectors.  
 
 The code could be further refined to make generalized functions to find ngrams. While creating the app, and given a string of words by the user, the idea would be look at strings of three or four words for the most likely word to follow. A further improvement would be to investigate if any phrases with emojis, interjections and other unusual strings occur, especially in the twitter source. A concern would be running the Shiny App in optimal time.
