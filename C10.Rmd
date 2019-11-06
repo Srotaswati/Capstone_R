@@ -67,7 +67,7 @@ There are `r format(length(sentencelist),big.mark=",",scientific=FALSE)` sentenc
 As the data is huge, only part of the data would be sampled. Next, the data is coverted into a list of words and cleaned of any numeric entities, punctuation marks, empty spaces, non-English characters. 
 ```{r makewords, cache=TRUE}
 set.seed(1223)
-sample_size<-0.1
+sample_size<-0.5
 lines<-sort(sample(1:length(textsource),round(length(textsource)*sample_size),replace=FALSE))
 sampled<-textsource[lines]
 sampled_dt<-data.table(sampled)
