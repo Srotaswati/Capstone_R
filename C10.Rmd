@@ -306,26 +306,25 @@ After the N-grams are created, these files are saved to be used in the Shiny App
 rm(plotdata)
 rm(prop)
 
-wordscodes<-wordscodes[f1>2]
 saveRDS(wordscodes,file = "./data/wordscodes.Rds")
 
-unigrams<-unigrams[f1>2]
+unigrams<-unigrams[f1>1]
 saveRDS(unigrams,file = "./data/unigrams.Rds")
 
 setkey(bigrams,c1,c2)
-bigrams<-bigrams[f12>2]
+bigrams<-bigrams[f12>1]
 saveRDS(bigrams,file = "./data/bigrams.Rds")
 
 setkey(trigrams,c1,c2,c3)
-trigrams<-trigrams[f123>2]
+trigrams<-trigrams[f123>1]
 saveRDS(trigrams,file = "./data/trigrams.Rds")
 
 setkey(quadgrams,c1,c2,c3,c4)
-quadgrams<-quadgrams[f1234>2]
+quadgrams<-quadgrams[f1234>1]
 saveRDS(quadgrams,file = "./data/quadgrams.Rds")
 
 setkey(pentagrams,c1,c2,c3,c4,c5)
-pentagrams<-pentagrams[f12345>2]
+pentagrams<-pentagrams[f12345>1]
 saveRDS(pentagrams,file = "./data/pentagrams.Rds")
 ```
 
