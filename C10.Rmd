@@ -22,6 +22,7 @@ Tasks to accomplish:
 knitr::opts_chunk$set(echo = TRUE)
 library(data.table)
 library(ggplot2)
+library(edgeR) 
 ```
 
 ## Getting the data
@@ -61,6 +62,10 @@ data.frame("File"=c("Blogs","News","Twitter"),"Size"=sapply(list(blogs,news,twit
 
 textdt<-data.table(textsource)
 sentencelist<-unlist(strsplit(textdt$textsource,"(?<!\\w\\.\\w.)(?<![A-Z][a-z]\\.)(?<=\\.|\\?)\\s", perl=TRUE))
+
+rm(blogs)
+rm(twitter)
+rm(news)
 ```
 There are `r format(length(sentencelist),big.mark=",",scientific=FALSE)` sentences. The size of actual textsource is `r format(object.size(textsource),units="GB")`.
 
@@ -73,9 +78,6 @@ lines<-sort(sample(1:length(textsource),round(length(textsource)*sample_size),re
 sampled<-textsource[lines]
 sampled_dt<-data.table(sampled)
 
-rm(blogs)
-rm(twitter)
-rm(news)
 rm(sentencelist)
 rm(textsource)
 
@@ -87,37 +89,42 @@ wordlist<-gsub("^\\d+(,\\d*)*\\.*\\d*$","numeric",wordlist)
 wordlist<-gsub("[[:punct:]]","",wordlist)
 wordlist<-gsub("[^\x01-\x7F]+","",wordlist)
 wordlist<-wordlist[!(wordlist=="")]
+
+rm(sampled_dt)
+rm(textdt)
 ```
 
 Next, we create a ready-table of unique words and assign a numerical code for each word by its frequency in the word list. The word and its corresponding code can be readily referenced by user-defined functions. 
 
 The wordscodes dictionary contains the actual word and its code sorted by frequency while the codes dictionary contains the words in the original order referenced by its code. The latter dictionary would be used to construct the multiple ngrams.
 ```{r coding_words, cache=TRUE}
-wordfreq<-data.table(word=wordlist)
-wordfreq[,freq:=.N,by=word]
+wordfreq<-data.table(w1=wordlist)
+wordfreq[,f1:=.N,by=w1]
 
 rm(wordlist)
 rm(sampled)
 
 wordscodes = unique(copy(wordfreq))
-setkey(wordscodes,freq)
-wordscodes[,code:= nrow(wordscodes):1]
-setkey(wordscodes,word)
+setkey(wordscodes,f1)
+wordscodes[,c1:= nrow(wordscodes):1]
+setkey(wordscodes,w1)
 
 wordtocode<-function(w){
     wlist<-list(w)
-    wordscodes[wlist]$code
+    wordscodes[wlist]$c1
 }
 codetoword<-function(c){
-    temp<-setkey(wordscodes,code)
+    temp<-setkey(wordscodes,c1)
     clist<-list(c)
-    wordscodes[clist]$word
+    wordscodes[clist]$w1
 }
 
 codes<-copy(wordfreq)
-codes[,codex:=wordtocode(word)]
-setnames(codes, old="codex", new="code")
-setcolorder(codes, neworder = c("code","freq"))
+codes[,code:=wordtocode(w1)]
+setnames(codes, old="code", new="c1")
+setcolorder(codes, neworder = c("c1","f1"))
+
+rm(wordfreq)
 ```
 
 ## N-gram models
@@ -131,51 +138,195 @@ rotatevec<-function(v){v[rotatenum(length(v))]}
 ### Unigrams
 ```{r unigram, cache=TRUE}
 unigrams<-unique(copy(codes))
-setkey(unigrams,code)
-unigrams[,code:=NULL]
-ggplot(data=unigrams[1:40,],aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="identity")+labs(x="Unigram",y="Frequency")+theme(axis.text.x = element_text(angle=90))
+setkey(unigrams,c1)
+ggplot(data=unigrams[1:40,],aes(x=reorder(w1,-f1),y=f1))+geom_bar(stat="identity")+labs(x="Unigram",y="Frequency")+theme(axis.text.x = element_text(angle=90))
+
+unigrams[,w1:=NULL]
+fsum<-sum(unigrams$f1)
+unigrams[,pc1:=f1/fsum]
 ```
 
 ### Bigrams
+
+To solve the problem of sparsity in the training set, Katz backoff model is used using Good-turing smoothing. 
 ```{r bigram, cache=TRUE}
-bigrams <- data.table(w1 = codes$word, c1 = codes$code, c2 = rotatevec(codes$code))
+bigrams <- data.table(w1 = codes$w1, c1 = codes$c1, c2 = rotatevec(codes$c1))
 bigrams[,freq:=.N,by=.(c1,c2)]
 bigrams<-bigrams[,word:=paste(w1,codetoword(c2)," ")]
 plotdata<-unique(bigrams[,c("word","freq")],by="word")
 setkey(plotdata,freq)
 ggplot(data=tail(plotdata,40),aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="identity")+labs(x="Bigram",y="Frequency")+theme(axis.text.x = element_text(angle=90))
+
+bigrams<-data.table(c1 = codes$c1, c2 = rotatevec(codes$c1),f1 = codes$f1, f2 = rotatevec(codes$f1))
+setkey(bigrams,c1,c2)
+bigrams[,f12:=.N,by=.(c1,c2)]
+bigrams<-unique(bigrams)
+fsum<-sum(bigrams$f12)
+setkey(bigrams,f12)
+gt<-goodTuring(bigrams$f12)
+prop<-rep(gt$proportion,gt$n)
+bigrams[,f12adj:=prop*fsum]
+setkey(bigrams,c2)
+bigrams[,pc2:=unigrams[c2]$pc1]
+setkey(bigrams,c1,c2)
+bigrams[,pc12:=f12adj/f1]
+bigrams[,beta:=1-sum(pc12),by = c1]
+bigrams[,alpha:=beta/(1-sum(pc2)),by = c1]
+bigrams[,c12:=1:nrow(bigrams)]
+
+bigramtocode<-function(x,y){
+  l<-list(x=x,y=y)
+  bigrams[l]$c12
+}
+
+bigrams[,c("f1","f2","f12adj","pc2"):=NULL]
 ```
 
 ### Trigrams
 ```{r trigram, cache=TRUE}
-trigrams <- data.table(w1 = codes$word, c1 = codes$code, c2 = rotatevec(codes$code),c3 = rotatevec(rotatevec(codes$code)))
+trigrams <- data.table(w1 = codes$w1, c1 = codes$c1, c2 = rotatevec(codes$c1),c3 = rotatevec(rotatevec(codes$c1)))
 trigrams[,freq:=.N,by=.(c1,c2,c3)]
 trigrams<-trigrams[,word:=paste(w1,codetoword(c2),codetoword(c3)," ")]
 plotdata<-unique(trigrams[,c("word","freq")],by="word")
 setkey(plotdata,freq)
 ggplot(data=tail(plotdata,40),aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="identity")+labs(x="Trigram",y="Frequency")+theme(axis.text.x = element_text(angle=90))
+
+trigrams<-data.table(c1 = codes$c1, c2 = rotatevec(codes$c1),c3 = rotatevec(rotatevec(codes$c1)),f1 = codes$f1, f2 = rotatevec(codes$f1),f3 = rotatevec(rotatevec(codes$f1)))
+setkey(trigrams,c1,c2,c3)
+trigrams[,f123:=.N,by=.(c1,c2,c3)]
+trigrams<-unique(trigrams)
+fsum<-sum(trigrams$f123)
+setkey(trigrams,f123)
+gt<-goodTuring(trigrams$f123)
+prop<-rep(gt$proportion,gt$n)
+trigrams[,f123adj:=prop*fsum]
+setkey(trigrams,c1,c2)
+trigrams[,c12:=bigramtocode(c1,c2)]
+setkey(trigrams,c2,c3)
+trigrams[,c23:=bigramtocode(c2,c3)]
+setkey(bigrams,c12)
+setkey(trigrams,c1,c2)
+trigrams[,f12:=bigrams[c12]$f12]
+setkey(trigrams,c2,c3)
+trigrams[,pc23:=bigrams[c23]$pc12]
+setkey(trigrams,c1,c2,c3)
+trigrams[,pc123:=f123adj/f12]
+trigrams[,beta:=1-sum(pc123),by = c12]
+trigrams[,alpha:=beta/(1-sum(pc23)),by = c12]
+trigrams[,c123:=1:nrow(trigrams)]
+
+trigramtocode<-function(x,y,z){
+  l<-list(x=x,y=y,z=z)
+  trigrams[l]$c123
+}
+
+trigrams[,c("f1","f2","f3","c12","c23","f12","f123adj","pc23"):=NULL]
 ```
 
 ### Quadgrams
 ```{r quadgram, cache=TRUE}
-quadgrams <- data.table(w1 = codes$word, c1 = codes$code, c2 = rotatevec(codes$code),c3 = rotatevec(rotatevec(codes$code)),c4 = rotatevec(rotatevec(rotatevec(codes$code))))
+quadgrams <- data.table(w1 = codes$w1, c1 = codes$c1, c2 = rotatevec(codes$c1),c3 = rotatevec(rotatevec(codes$c1)),c4 = rotatevec(rotatevec(rotatevec(codes$c1))))
 quadgrams[,freq:=.N,by=.(c1,c2,c3,c4)]
 quadgrams<-quadgrams[,word:=paste(w1,codetoword(c2),codetoword(c3),codetoword(c4)," ")]
 plotdata<-unique(quadgrams[,c("word","freq")],by="word")
 setkey(plotdata,freq)
 ggplot(data=tail(plotdata,40),aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="identity")+labs(x="Quadgram",y="Frequency")+theme(axis.text.x = element_text(angle=90))
+
+quadgrams<-data.table(c1 = codes$c1, c2 = rotatevec(codes$c1),c3 = rotatevec(rotatevec(codes$c1)),c4 = rotatevec(rotatevec(rotatevec(codes$c1))),f1 = codes$f1, f2 = rotatevec(codes$f1),f3 = rotatevec(rotatevec(codes$f1)),f4 = rotatevec(rotatevec(rotatevec(codes$f1))))
+setkey(quadgrams,c1,c2,c3,c4)
+quadgrams[,f1234:=.N,by=.(c1,c2,c3,c4)]
+quadgrams<-unique(quadgrams)
+fsum<-sum(quadgrams$f1234)
+setkey(quadgrams,f1234)
+gt<-goodTuring(quadgrams$f1234)
+prop<-rep(gt$proportion,gt$n)
+quadgrams[,f1234adj:=prop*fsum]
+setkey(quadgrams,c1,c2,c3)
+quadgrams[,c123:=trigramtocode(c1,c2,c3)]
+setkey(quadgrams,c2,c3,c4)
+quadgrams[,c234:=trigramtocode(c2,c3,c4)]
+setkey(trigrams,c123)
+setkey(quadgrams,c1,c2,c3)
+quadgrams[,f123:=trigrams[c123]$f123]
+setkey(quadgrams,c2,c3,c4)
+quadgrams[,pc234:=trigrams[c234]$pc123]
+setkey(quadgrams,c1,c2,c3,c4)
+quadgrams[,pc1234:=f1234adj/f123]
+quadgrams[,beta:=1-sum(pc1234),by = c123]
+quadgrams[,alpha:=beta/(1-sum(pc234)),by = c123]
+quadgrams[,c1234:=1:nrow(quadgrams)]
+
+
+quadgramtocode<-function(x,y,z,t){
+  l<-list(x=x,y=y,z=z,t=t)
+  quadgrams[l]$c1234
+}
+
+quadgrams[,c("f1","f2","f3","f4","c123","c234","f123","f1234adj","pc234"):=NULL]
 ```
 
 ### Pentagrams
 ```{r pentagram, cache=TRUE}
-pentagrams <- data.table(w1 = codes$word, c1 = codes$code, c2 = rotatevec(codes$code),c3 = rotatevec(rotatevec(codes$code)),c4 = rotatevec(rotatevec(rotatevec(codes$code))),c5 = rotatevec(rotatevec(rotatevec(rotatevec(codes$code)))))
+pentagrams <- data.table(w1 = codes$w1, c1 = codes$c1, c2 = rotatevec(codes$c1),c3 = rotatevec(rotatevec(codes$c1)),c4 = rotatevec(rotatevec(rotatevec(codes$c1))),c5 = rotatevec(rotatevec(rotatevec(rotatevec(codes$c1)))))
 pentagrams[,freq:=.N,by=.(c1,c2,c3,c4,c5)]
 pentagrams<-pentagrams[,word:=paste(w1,codetoword(c2),codetoword(c3),codetoword(c4),codetoword(c5)," ")]
 plotdata<-unique(pentagrams[,c("word","freq")],by="word")
 setkey(plotdata,freq)
 ggplot(data=tail(plotdata,40),aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="identity")+labs(x="Pentagram",y="Frequency")+theme(axis.text.x = element_text(angle=90))
 
+pentagrams<-data.table(c1 = codes$c1, c2 = rotatevec(codes$c1),c3 = rotatevec(rotatevec(codes$c1)),c4 = rotatevec(rotatevec(rotatevec(codes$c1))),c5 = rotatevec(rotatevec(rotatevec(rotatevec(codes$c1)))),f1 = codes$f1, f2 = rotatevec(codes$f1),f3 = rotatevec(rotatevec(codes$f1)),f4 = rotatevec(rotatevec(rotatevec(codes$f1))),f5 = rotatevec(rotatevec(rotatevec(rotatevec(codes$f1)))))
+setkey(pentagrams,c1,c2,c3,c4,c5)
+pentagrams[,f12345:=.N,by=.(c1,c2,c3,c4,c5)]
+pentagrams<-unique(pentagrams)
+fsum<-sum(pentagrams$f12345)
+setkey(pentagrams,f12345)
+gt<-goodTuring(pentagrams$f12345)
+prop<-rep(gt$proportion,gt$n)
+pentagrams[,f12345adj:=prop*fsum]
+setkey(pentagrams,c1,c2,c3,c4)
+pentagrams[,c1234:=quadgramtocode(c1,c2,c3,c4)]
+setkey(pentagrams,c2,c3,c4,c5)
+pentagrams[,c2345:=quadgramtocode(c2,c3,c4,c5)]
+setkey(quadgrams,c1234)
+setkey(pentagrams,c1,c2,c3,c4)
+pentagrams[,f1234:=quadgrams[c1234]$f1234]
+setkey(pentagrams,c2,c3,c4,c5)
+pentagrams[,pc2345:=quadgrams[c2345]$pc1234]
+setkey(pentagrams,c1,c2,c3,c4,c5)
+pentagrams[,pc12345:=f12345adj/f1234]
+pentagrams[,beta:=1-sum(pc12345),by = c1234]
+pentagrams[,alpha:=beta/(1-sum(pc2345)),by = c1234]
+pentagrams[,c12345:=1:nrow(pentagrams)]
+
+pentagrams[,c("f1","f2","f3","f4","f5","c1234","c2345","f1234","f12345adj","pc2345"):=NULL]
+```
+After the N-grams are created, these files are saved to be used in the Shiny App to save runtime.
+
+```{r final}
 rm(plotdata)
+rm(prop)
+
+wordscodes<-wordscodes[f1>2]
+saveRDS(wordscodes,file = "./data/wordscodes.Rds")
+
+unigrams<-unigrams[f1>2]
+saveRDS(unigrams,file = "./data/unigrams.Rds")
+
+setkey(bigrams,c1,c2)
+bigrams<-bigrams[f12>2]
+saveRDS(bigrams,file = "./data/bigrams.Rds")
+
+setkey(trigrams,c1,c2,c3)
+trigrams<-trigrams[f123>2]
+saveRDS(trigrams,file = "./data/trigrams.Rds")
+
+setkey(quadgrams,c1,c2,c3,c4)
+quadgrams<-quadgrams[f1234>2]
+saveRDS(quadgrams,file = "./data/quadgrams.Rds")
+
+setkey(pentagrams,c1,c2,c3,c4,c5)
+pentagrams<-pentagrams[f12345>2]
+saveRDS(pentagrams,file = "./data/pentagrams.Rds")
 ```
 
 ## Summary and Futher Work
