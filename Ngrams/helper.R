@@ -1,11 +1,11 @@
 library(data.table)
 
-unigrams = readRDS("../data/unigrams.Rds")
-bigrams = readRDS("../data/bigrams.Rds")
-trigrams = readRDS("../data/trigrams.Rds")
-quadgrams = readRDS("../data/quadgrams.Rds")
-pentagrams = readRDS("../data/pentagrams.Rds")
-wordscodes = readRDS("../data/wordscodes.Rds")
+unigrams = readRDS("./data/unigrams.Rds")
+bigrams = readRDS("./data/bigrams.Rds")
+trigrams = readRDS("./data/trigrams.Rds")
+quadgrams = readRDS("./data/quadgrams.Rds")
+pentagrams = readRDS("./data/pentagrams.Rds")
+wordscodes = readRDS("./data/wordscodes.Rds")
 
 clean<-function(phrase){
     words<-unlist(strsplit(tolower(phrase)," "))
