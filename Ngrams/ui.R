@@ -32,6 +32,21 @@ shinyUI(fluidPage(
         mainPanel(
             tabsetPanel(
                 tabPanel(div("Output",style = "font-size:150%"),
+                         tags$head(tags$style(type="text/css", "
+             #loadmessage {
+               position: fixed;
+               top: 350px;
+               right: 0px;
+               width: 100%;
+               text-align: left;
+               padding: 0px 0px 0px 20px;
+               font-weight: bold;
+               font-size: 250%;
+               color: #000000;
+             }
+          ")),
+                conditionalPanel(condition="$('html').hasClass('shiny-busy')",
+                                          tags$div("This algorithm teaches you patience...",id="loadmessage")),
                     h3("You were probably going to type ..."),
                     br(),
                     h3(textOutput("bestword")),

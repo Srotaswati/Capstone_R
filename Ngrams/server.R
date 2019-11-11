@@ -13,7 +13,6 @@ source("helper.R")
 
 # Define server logic required to draw a histogram
 shinyServer(function(input, output) {
-
     output$bestword <- renderText({
         predictword(input$phrase,input$num)$words[1]
     })
@@ -24,8 +23,8 @@ shinyServer(function(input, output) {
         paste0("Other possible ",words[input$num-1]," choices ...")
     })
     table<-reactive({
-        data.table(words = predictword(input$phrase,input$num)$words[2:input$num],
-                   probs = predictword(input$phrase,input$num)$probs[2:input$num])
+        data.table(word = predictword(input$phrase,input$num)$words[2:input$num],
+                   probability = sprintf("%1.2f%%", 100*predictword(input$phrase,input$num)$probs[2:input$num]))
     })
     output$ptable<-DT::renderDataTable({
         datatable(table(),filter="none", selection="multiple", escape=FALSE, 

@@ -2,9 +2,13 @@ library(data.table)
 
 unigrams = readRDS("./data/unigrams.Rds")
 bigrams = readRDS("./data/bigrams.Rds")
+setkey(bigrams,c1,c2)
 trigrams = readRDS("./data/trigrams.Rds")
+setkey(trigrams,c1,c2,c3)
 quadgrams = readRDS("./data/quadgrams.Rds")
+setkey(quadgrams,c1,c2,c3,c4)
 pentagrams = readRDS("./data/pentagrams.Rds")
+setkey(pentagrams,c1,c2,c3,c4,c5)
 wordscodes = readRDS("./data/wordscodes.Rds")
 
 clean<-function(phrase){
@@ -19,13 +23,11 @@ clean<-function(phrase){
 
 wordtocode<-function(w){
     setkey(wordscodes,w1)
-    wlist<-list(w)
-    wordscodes[wlist]$c1
+    wordscodes[list(w)]$c1
 }
 codetoword<-function(c){
     temp<-setkey(wordscodes,c1)
-    clist<-list(c)
-    wordscodes[clist]$w1
+    wordscodes[list(c)]$w1
 }
 
 unigrampredict<-function(prevc,n){
@@ -54,9 +56,9 @@ bigrampredict<-function(input,prevc,n){
     return(prediction)
 }
 
-trigrampredict<-function(input,prevc,n){
-    x1<-input[1]
-    x2<-input[2]
+trigrampredict<-function(inputc,prevc,n){
+    x1<-inputc[1]
+    x2<-inputc[2]
     if(any(!is.na(trigrams[.(x1,x2)][!(c3 %in% prevc)]$f123))){
         selection<-trigrams[.(x1,x2)][!(c3 %in% prevc)][order(pc123,decreasing = TRUE)]
         newc<-selection$c3[1:min(n,nrow(selection))]
@@ -84,12 +86,12 @@ quadgrampredict<-function(inputc,prevc,n){
         newp<-selection$pc1234[1:min(n,nrow(selection))]
         
         alpha<-selection$alpha[1]
-        newc<-c(newc,trigrampredict(.(x2,x3),c(prevc,newc),n)$codes)
-        newp<-c(newp,trigrampredict(.(x2,x3),c(prevc,newc),n)$probs*alpha)
+        newc<-c(newc,trigrampredict(c(x2,x3),c(prevc,newc),n)$codes)
+        newp<-c(newp,trigrampredict(c(x2,x3),c(prevc,newc),n)$probs*alpha)
     }
     else {
-        newc<-trigrampredict(.(x2,x3),prevc,n)$codes
-        newp<-trigrampredict(.(x2,x3),prevc,n)$probs
+        newc<-trigrampredict(c(x2,x3),prevc,n)$codes
+        newp<-trigrampredict(c(x2,x3),prevc,n)$probs
     }
     prediction<-list(codes = newc,probs = newp)
     return(prediction)
@@ -106,12 +108,12 @@ pentagrampredict<-function(inputc,prevc,n){
         newp<-selection$pc12345[1:min(n,nrow(selection))]
         
         alpha<-selection$alpha[1]
-        newc<-c(newc,quadgrampredict(.(x2,x3,x4),c(prevc,newc),n)$codes)
-        newp<-c(newp,quadgrampredict(.(x2,x3,x4),c(prevc,newc),n)$probs*alpha)
+        newc<-c(newc,quadgrampredict(c(x2,x3,x4),c(prevc,newc),n)$codes)
+        newp<-c(newp,quadgrampredict(c(x2,x3,x4),c(prevc,newc),n)$probs*alpha)
     }
     else {
-        newc<-quadgrampredict(.(x2,x3,x4),prevc,n)$codes
-        newp<-quadgrampredict(.(x2,x3,x4),prevc,n)$probs
+        newc<-quadgrampredict(c(x2,x3,x4),prevc,n)$codes
+        newp<-quadgrampredict(c(x2,x3,x4),prevc,n)$probs
     }
     prediction<-list(codes = newc,probs = newp)
     return(prediction)
@@ -124,7 +126,7 @@ predictword<-function(phrase,n=5){
     prevc<-NULL
     prediction<-NULL
     if(nwords>=4)
-        prediction<-pentagrampredict(codes[(n-3):n],prevc,n)
+        prediction<-pentagrampredict(codes[(nwords-3):nwords],prevc,n)
     else if (nwords==3)
         prediction<-quadgrampredict(codes,prevc,n)
     else if (nwords==2)
