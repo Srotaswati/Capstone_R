@@ -36,8 +36,8 @@ shinyUI(fluidPage(
              #loadmessage {
                position: fixed;
                top: 350px;
-               right: 0px;
-               width: 100%;
+               left: 0px;
+               width: 40%;
                text-align: left;
                padding: 0px 0px 0px 20px;
                font-weight: bold;
@@ -46,7 +46,7 @@ shinyUI(fluidPage(
              }
           ")),
                 conditionalPanel(condition="$('html').hasClass('shiny-busy')",
-                                          tags$div("This algorithm teaches you patience...",id="loadmessage")),
+                                          tags$div("I don't know what this app does but it will teach you patience...",id="loadmessage")),
                     h3("You were probably going to type ..."),
                     br(),
                     h3(textOutput("bestword")),
