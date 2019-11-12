@@ -37,7 +37,7 @@ shinyUI(fluidPage(
                position: fixed;
                top: 350px;
                left: 0px;
-               width: 40%;
+               width: 35%;
                text-align: left;
                padding: 0px 0px 0px 20px;
                font-weight: bold;

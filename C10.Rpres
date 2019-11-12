@@ -1,0 +1,78 @@
+Data Sciece Capstone: Next word prediction using an N-gram model
+========================================================
+author: Srotaswati Panda
+date: 12-11-2019
+autosize: true
+
+<style>
+.reveal h3 { 
+  font-size: 60px;
+  color: darkblue;
+}
+
+.reveal section p {
+    font-size: 30px;
+}
+
+.reveal section pre code {
+    font-size: 20px;
+}
+
+.reveal ul, 
+.reveal ol {
+    font-size: 30px;
+    color: black;
+    list-style-type: square;
+}
+
+.slideCol .reveal .state-background {
+background: white;
+border-color:black;
+}
+
+</style>
+
+Overview
+========================================================
+type: slideCol
+
+The objective of this project was to code an N-gram model into a web app which enables a user to enter a phrase and output a set of suggested words which best fits the incomplete sentence. 
+
+Structure: There are two tabs for the Output and the documentation
+
+***
+![ShinyApp](ShinyApps.png)
+
+Brief description of the Working
+========================================================
+type: slideCol
+
+The app uses a corpus of words from Swiftkey collected from various blogs, news websites and twitter. There were about 5.8 million sentences in the original corpus with a size of 0.6 GB of which 50% was sampled for the app. The final size of Ngram files and word dictionary used in Swiftkey was 60 MB.
+
+The intermediary step involves some word-processing with regex to clean the sentences, followed by conversion of words into codes and creating a dictionary to reference the same. Finally, the data was replicated into various ngram lists till n<6 so the end probablities will be calculated only for a maximum of last four words given the phrase.
+
+For the prediction algorithm, Katz backoff combined with Good-Turing smoothing is used to redistribute or discount the probablities from the (n-1)gram model into the ngram model to solve the problem of sparsity. 
+
+Embedded Version of App
+========================================================
+<iframe src="https://neyana31.shinyapps.io/Ngrams/" height=600 width=1000></iframe>
+
+
+Further improvements in the offing
+========================================================
+type: slideCol
+
+One of the best performing n-gram smoothing methods is the interpolated Kneser-Key algorithm which handles the unigram distribution in a different manner. There are several other methods to improve the algorithm:
+- Pruning: Use a larger corpus and employ a high count threshold for the frequency.
+- Higher Ngrams: This algorithm only uses the last four words of the incomplete sentence. Common phrases may be bigger and this reduces the predictive ability.
+
+
+Thank You!
+========================================================
+
+Links:
+
+- [Shiny Application](https://neyana31.shinyapps.io/Ngrams/)
+
+- [Source Code](https://github.com/Srotaswati/Capstone_R)
+
