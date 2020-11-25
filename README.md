@@ -2,7 +2,7 @@
 
 ### Next word prediction using an N-gram model
 
-The app is hosted on Shiny at <https://neyana31.shinyapps.io/Ngrams/>. The instructions to use the app can be found in the *Documentation* tab. Other supporting links for the project are as below:
+The app is hosted on Shiny at <https://srotaswati.shinyapps.io/Ngrams/>. The instructions to use the app can be found in the *Documentation* tab. Other supporting links for the project are as below:
 1. [Milestone report for the project](https://srotaswati.github.io/Capstone_R/C10.html)
 2. [Presentation for the application](https://srotaswati.github.io/Capstone_R/C10-rpubs.html)  
 
