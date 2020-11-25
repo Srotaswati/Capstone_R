@@ -55,7 +55,7 @@ For the prediction algorithm, Katz backoff combined with Good-Turing smoothing i
 
 Embedded Version of App
 ========================================================
-<iframe src="https://neyana31.shinyapps.io/Ngrams/" height=600 width=1000></iframe>
+<iframe src="https://srotaswati.shinyapps.io/Ngrams/" height=600 width=1000></iframe>
 
 
 Further improvements in the offing
